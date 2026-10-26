@@ -1,0 +1,157 @@
+// Schema Prisma do TradePilot AI
+// Todos os campos monetários e preços utilizam Decimal @db.Decimal(18, 4) (nunca Float).
+// O isolamento multi-tenant (RNF-11) e a imutabilidade de audit_logs (SPEC-04, RNF-30)
+// são reforçados no PostgreSQL pela migration 001_init_rls_audit.sql.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// @spec SPEC-01, @rf RF-T-1, @rnf RNF-11, @rnf RNF-12
+model User {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String
+  email               String   @unique
+  passwordHash        String   @map("password_hash")
+  totpSecretEncrypted String?  @map("totp_secret_encrypted")
+  totpEnabled         Boolean  @default(false) @map("totp_enabled")
+  lgpdConsentAt       DateTime @map("lgpd_consent_at") @db.Timestamptz(6)
+  onboardingCompleted Boolean  @default(false) @map("onboarding_completed")
+  planCode            String   @default("trial") @map("plan_code")
+  planStatus          String   @default("trial") @map("plan_status")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  trades        Trade[]
+  ingestionJobs IngestionJob[]
+  stagingItems  StagingItem[]
+
+  @@map("users")
+}
+
+/// Tabela estritamente append-only (sem UPDATE/DELETE para tradepilot_app).
+/// Sem FK com ON DELETE CASCADE para preservar rastro mínimo anonimizado na exclusão LGPD (SPEC-03).
+/// @spec SPEC-04, @spec SPEC-03, @rnf RNF-15, @rnf RNF-30
+model AuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  actorId        String   @map("actor_id") @db.Uuid
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String   @map("entity_id") @db.Uuid
+  beforeSnapshot Json?    @map("before_snapshot")
+  afterSnapshot  Json?    @map("after_snapshot")
+  requestId      String?  @map("request_id")
+  ipHash         String?  @map("ip_hash")
+  createdAtUtc   DateTime @default(now()) @map("created_at_utc") @db.Timestamptz(6)
+
+  @@index([userId, createdAtUtc(sort: Desc)], map: "idx_audit_logs_user_created")
+  @@index([userId, entityType, entityId], map: "idx_audit_logs_entity")
+  @@map("audit_logs")
+}
+
+/// @spec SPEC-08, @spec SPEC-10, @spec SPEC-12, @spec SPEC-13, @spec SPEC-23
+/// @rf RF-M1-1, @rf RF-M1-7, @rf RF-M5-1, @rnf RNF-11, @rnf RNF-20
+model Trade {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  ticker        String
+  marketType    String   @map("market_type")
+  side          String
+  taxSilo       String   @map("tax_silo")
+  source        String   @default("MANUAL")
+  isDemo        Boolean  @default(false) @map("is_demo")
+  entryAt       DateTime @map("entry_at") @db.Timestamptz(6)
+  exitAt        DateTime @map("exit_at") @db.Timestamptz(6)
+  qty           Decimal  @db.Decimal(18, 4)
+  entryPrice    Decimal  @map("entry_price") @db.Decimal(18, 4)
+  exitPrice     Decimal  @map("exit_price") @db.Decimal(18, 4)
+  stopPrice     Decimal? @map("stop_price") @db.Decimal(18, 4)
+  targetPrice   Decimal? @map("target_price") @db.Decimal(18, 4)
+  fees          Decimal  @default(0) @db.Decimal(18, 4)
+  irrf          Decimal  @default(0) @db.Decimal(18, 4)
+  grossPnl      Decimal  @map("gross_pnl") @db.Decimal(18, 4)
+  netPnl        Decimal  @map("net_pnl") @db.Decimal(18, 4)
+  pnlPct        Decimal? @map("pnl_pct") @db.Decimal(18, 4)
+  dedupHash     String?  @map("dedup_hash") @db.Char(64)
+  broker        String?
+  setupName     String?  @map("setup_name")
+  followedPlan  Boolean? @map("followed_plan")
+  entryReason   String?  @map("entry_reason")
+  exitReason    String?  @map("exit_reason")
+  notes         String?
+  preConfidence Int?     @map("pre_confidence") @db.SmallInt
+  preAnxiety    Int?     @map("pre_anxiety") @db.SmallInt
+  postTags      String[] @default([]) @map("post_tags")
+  emotionalNote String?  @map("emotional_note")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchedStagingItems StagingItem[]
+
+  @@index([userId, exitAt(sort: Desc)], map: "idx_trades_user_exit_at")
+  @@index([userId, taxSilo, exitAt(sort: Desc)], map: "idx_trades_user_tax_silo")
+  @@map("trades")
+}
+
+/// @spec SPEC-06, @spec SPEC-07, @spec SPEC-09, @rf RF-M1-5, @rnf RNF-3, @rnf RNF-11
+model IngestionJob {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  sourceHint       String    @map("source_hint")
+  fileName         String    @map("file_name")
+  fileSha256       String    @map("file_sha256") @db.Char(64)
+  status           String    @default("QUEUED")
+  totalRows        Int       @default(0) @map("total_rows")
+  processedRows    Int       @default(0) @map("processed_rows")
+  conflictCount    Int       @default(0) @map("conflict_count")
+  errorMessagePtbr String?   @map("error_message_ptbr")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stagingItems StagingItem[]
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_ingestion_jobs_user_created")
+  @@map("ingestion_jobs")
+}
+
+/// @spec SPEC-06, @spec SPEC-07, @spec SPEC-08, @spec SPEC-09
+/// @rf RF-M1-5, @rf RF-M1-6, @rf RF-M1-7, @rnf RNF-9, @rnf RNF-11
+model StagingItem {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  jobId            String   @map("job_id") @db.Uuid
+  rowNumber        Int      @map("row_number")
+  broker           String?
+  tradeDate        DateTime @map("trade_date") @db.Date
+  executedAt       DateTime @map("executed_at") @db.Timestamptz(6)
+  ticker           String
+  marketType       String   @map("market_type")
+  side             String
+  qty              Decimal  @db.Decimal(18, 4)
+  price            Decimal  @db.Decimal(18, 4)
+  fees             Decimal  @default(0) @db.Decimal(18, 4)
+  irrf             Decimal  @default(0) @db.Decimal(18, 4)
+  dedupHash        String   @map("dedup_hash") @db.Char(64)
+  dedupStatus      String   @default("NEW") @map("dedup_status")
+  matchedTradeId   String?  @map("matched_trade_id") @db.Uuid
+  diffFields       String[] @default([]) @map("diff_fields")
+  resolutionAction String?  @map("resolution_action")
+  rawPayload       Json     @default("{}") @map("raw_payload")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job          IngestionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  matchedTrade Trade?       @relation(fields: [matchedTradeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, jobId, rowNumber], map: "idx_staging_items_user_job")
+  @@index([userId, dedupHash], map: "idx_staging_items_user_dedup")
+  @@map("staging_items")
+}

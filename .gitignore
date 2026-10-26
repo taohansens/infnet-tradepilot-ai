@@ -1,0 +1,43 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente e segredos (nunca versionar .env real)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Builds e artefatos compilados
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+doc/
+
+# Testes e cobertura
+coverage/
+.vitest/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Prisma / banco local
+*.db
+*.db-journal
+
+# Sistema operacional e editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
