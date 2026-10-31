@@ -47,6 +47,12 @@ export default function HomePage() {
           >
             Dados &amp; LGPD (/configuracoes/dados)
           </Link>
+          <Link
+            href="/diario/importar"
+            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-200 transition hover:bg-emerald-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+          >
+            Importar Extrato (/diario/importar)
+          </Link>
         </nav>
       </header>
 

@@ -1,11 +1,16 @@
 import type {
   AuthTokenResponse,
+  CommitIngestionJobRequest,
+  CommitIngestionJobResponse,
+  CreateIngestionJobResponse,
   DeleteAccountRequest,
   DeleteAccountResponse,
+  IngestionJobDetailResponse,
   LoginRequest,
   LoginRequires2faResponse,
   PrivacyExportJobResponse,
   RegisterRequest,
+  UploadSourceHint,
 } from '@tradepilot/shared';
 
 /**
@@ -165,6 +170,76 @@ export function fetchAuditLogs(limit = 30): Promise<{ items: AuditLogListItem[] 
   return requestJson<{ items: AuditLogListItem[] }>(
     `/audit-logs?limit=${limit}`,
     { method: 'GET' },
+    true,
+  );
+}
+
+/**
+ * Envia arquivo CSV/XLSX para ingestão assíncrona (`POST /api/v1/ingestion/jobs`).
+ * @spec SPEC-06
+ * @rf RF-M1-5
+ */
+export async function uploadIngestionFile(
+  file: File,
+  sourceHint: UploadSourceHint,
+): Promise<CreateIngestionJobResponse> {
+  const token = getAccessToken();
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('source_hint', sourceHint);
+
+  const response = await fetch(`${API_BASE_URL}/ingestion/jobs`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as ApiErrorPayload &
+    CreateIngestionJobResponse;
+
+  if (!response.ok) {
+    throw new ApiClientError(
+      response.status,
+      payload.error ?? 'UPLOAD_FAILED',
+      payload.message ?? 'Não foi possível enviar o arquivo para importação.',
+    );
+  }
+
+  return payload;
+}
+
+/**
+ * Consulta progresso e itens em staging/conflitos de um job (`GET /api/v1/ingestion/jobs/:jobId`).
+ * @spec SPEC-06
+ * @spec SPEC-08
+ * @spec SPEC-09
+ */
+export function fetchIngestionJob(
+  jobId: string,
+): Promise<IngestionJobDetailResponse> {
+  return requestJson<IngestionJobDetailResponse>(
+    `/ingestion/jobs/${jobId}`,
+    { method: 'GET' },
+    true,
+  );
+}
+
+/**
+ * Efetiva o lote em staging aplicando resoluções em transação atômica única (`POST /api/v1/ingestion/jobs/:jobId/commit`).
+ * @spec SPEC-09
+ * @rf RF-M1-6
+ * @rf RF-M1-7
+ */
+export function commitIngestionJob(
+  jobId: string,
+  payload: CommitIngestionJobRequest,
+): Promise<CommitIngestionJobResponse> {
+  return requestJson<CommitIngestionJobResponse>(
+    `/ingestion/jobs/${jobId}/commit`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
     true,
   );
 }
