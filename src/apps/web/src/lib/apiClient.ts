@@ -1,13 +1,17 @@
 import type {
   AuthTokenResponse,
+  ClearDemoSeedResponse,
   CommitIngestionJobRequest,
   CommitIngestionJobResponse,
+  CompleteOnboardingResponse,
   CreateIngestionJobResponse,
   DeleteAccountRequest,
   DeleteAccountResponse,
+  DemoSeedResponse,
   IngestionJobDetailResponse,
   LoginRequest,
   LoginRequires2faResponse,
+  OnboardingStatusResponse,
   PrivacyExportJobResponse,
   RegisterRequest,
   UploadSourceHint,
@@ -240,6 +244,57 @@ export function commitIngestionJob(
       method: 'POST',
       body: JSON.stringify(payload),
     },
+    true,
+  );
+}
+
+/**
+ * Popula 45 trades sintéticos demonstrativos (`POST /api/v1/onboarding/demo-seed`).
+ * @spec SPEC-05
+ * @rf RF-T-3
+ */
+export function seedOnboardingDemo(): Promise<DemoSeedResponse> {
+  return requestJson<DemoSeedResponse>(
+    '/onboarding/demo-seed',
+    { method: 'POST' },
+    true,
+  );
+}
+
+/**
+ * Limpa em 1 clique todos os trades demonstrativos (`DELETE /api/v1/onboarding/demo-seed`).
+ * @spec SPEC-05
+ * @rf RF-T-3
+ */
+export function clearOnboardingDemo(): Promise<ClearDemoSeedResponse> {
+  return requestJson<ClearDemoSeedResponse>(
+    '/onboarding/demo-seed',
+    { method: 'DELETE' },
+    true,
+  );
+}
+
+/**
+ * Marca o onboarding como concluído (`POST /api/v1/onboarding/complete`).
+ * @spec SPEC-05
+ * @rf RF-T-3
+ */
+export function completeOnboarding(): Promise<CompleteOnboardingResponse> {
+  return requestJson<CompleteOnboardingResponse>(
+    '/onboarding/complete',
+    { method: 'POST' },
+    true,
+  );
+}
+
+/**
+ * Consulta o status atual de onboarding e base demonstrativa (`GET /api/v1/onboarding/status`).
+ * @spec SPEC-05
+ */
+export function fetchOnboardingStatus(): Promise<OnboardingStatusResponse> {
+  return requestJson<OnboardingStatusResponse>(
+    '/onboarding/status',
+    { method: 'GET' },
     true,
   );
 }

@@ -53,6 +53,12 @@ export default function HomePage() {
           >
             Importar Extrato (/diario/importar)
           </Link>
+          <Link
+            href="/onboarding"
+            className="rounded-lg border border-slate-700 bg-surface-900 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:bg-surface-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          >
+            Onboarding (/onboarding)
+          </Link>
         </nav>
       </header>
 

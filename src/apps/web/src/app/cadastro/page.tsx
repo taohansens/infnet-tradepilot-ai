@@ -61,7 +61,7 @@ export default function CadastroPage() {
       });
 
       saveAuthTokens(result);
-      router.push('/configuracoes/dados');
+      router.push(result.requires_onboarding ? '/onboarding' : '/dashboard');
     } catch (error) {
       if (error instanceof ApiClientError) {
         setErrorMessage(error.message);

@@ -6,6 +6,7 @@ import { auditService } from './services/auditService.js';
 import { RlsContextError } from './db/rlsContext.js';
 import { createAuthRouter } from './routes/authRoutes.js';
 import { createIngestionRouter } from './routes/ingestionRoutes.js';
+import { createOnboardingRouter } from './routes/onboardingRoutes.js';
 import { createPrivacyRouter } from './routes/privacyRoutes.js';
 
 /**
@@ -50,6 +51,9 @@ export function createApp() {
 
   // Rotas autenticadas de ingestão assíncrona e conciliação (SPEC-06, SPEC-08, SPEC-09)
   app.use('/api/v1/ingestion', authRlsMiddleware, createIngestionRouter());
+
+  // Rotas autenticadas de onboarding invertido e base demonstrativa (SPEC-05)
+  app.use('/api/v1/onboarding', authRlsMiddleware, createOnboardingRouter());
 
   /**
    * Consulta somente-leitura da trilha de auditoria imutável do usuário autenticado.
