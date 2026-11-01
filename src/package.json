@@ -12,6 +12,7 @@
     "build": "npm run build --workspace=@tradepilot/shared && npm run build --workspace=@tradepilot/api && npm run build --workspace=@tradepilot/web",
     "typecheck": "npm run typecheck --workspace=@tradepilot/shared && npm run typecheck --workspace=@tradepilot/api && npm run typecheck --workspace=@tradepilot/web",
     "test": "npm run test --workspace=@tradepilot/shared && npm run test --workspace=@tradepilot/api",
+    "test:gherkin": "vitest run --config vitest.gherkin.config.ts",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
   },
