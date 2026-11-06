@@ -90,18 +90,26 @@ CREATE POLICY users_self_isolation ON users
 -- antes que app.current_user_id exista na sessão (@spec SPEC-01).
 CREATE OR REPLACE FUNCTION auth_find_user_by_email(p_email TEXT)
 RETURNS TABLE (
-  id                   UUID,
-  email                TEXT,
-  password_hash        TEXT,
-  totp_enabled         BOOLEAN,
-  plan_status          TEXT,
-  onboarding_completed BOOLEAN
+  id                    UUID,
+  email                 TEXT,
+  password_hash         TEXT,
+  totp_enabled          BOOLEAN,
+  totp_secret_encrypted TEXT,
+  plan_status           TEXT,
+  onboarding_completed  BOOLEAN
 )
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT u.id, u.email, u.password_hash, u.totp_enabled, u.plan_status, u.onboarding_completed
+  SELECT
+    u.id,
+    u.email,
+    u.password_hash,
+    u.totp_enabled,
+    u.totp_secret_encrypted,
+    u.plan_status,
+    u.onboarding_completed
   FROM users u
   WHERE LOWER(u.email) = LOWER(TRIM(p_email))
   LIMIT 1;

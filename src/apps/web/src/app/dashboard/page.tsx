@@ -119,7 +119,7 @@ export default function DashboardPage() {
               Modo Base Demonstrativa Ativo ({status.demo_trades_count} trades sintéticos)
             </p>
             <p className="mt-0.5 text-xs text-amber-200">
-              Estes dados são marcados com <code>is_demo = true</code>. Limpe-os em 1 clique quando estiver pronto para usar apenas seus extratos reais.
+              Estes registros são apenas para demonstração. Limpe-os em 1 clique quando estiver pronto para usar apenas seus extratos reais.
             </p>
           </div>
           <button

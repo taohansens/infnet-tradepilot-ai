@@ -433,8 +433,8 @@ export default function OnboardingPage() {
                 Explorar Base Demonstrativa
               </h2>
               <p className="text-sm text-slate-300">
-                Popule instantaneamente <strong className="text-white">45 trades sintéticos</strong> (WIN, WDO, PETR4, VALE3, ITUB4) marcados com{' '}
-                <code className="text-slate-100">is_demo = true</code> para ver o Dashboard em menos de 5 segundos.
+                Popule instantaneamente <strong className="text-white">45 trades sintéticos</strong> (WIN, WDO, PETR4, VALE3, ITUB4) identificados como{' '}
+                <strong className="text-slate-100">dados de demonstração</strong> para ver o Dashboard em menos de 5 segundos.
               </p>
               <p className="text-xs text-slate-400">
                 Você poderá apagar todos os dados demonstrativos em 1 clique assim que importar seus arquivos reais.

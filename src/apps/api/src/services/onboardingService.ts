@@ -205,7 +205,7 @@ export function buildSyntheticDemoTrades(
       template.taxSilo === 'DAY_TRADE' ? 18 + (i % 25) : 60 * 26;
     const exitAt = new Date(entryAt.getTime() + durationMinutes * 60_000);
 
-    const priceJitter = toDecimal(i % 7).mul(
+    const priceJitter = toDecimal(String(i % 7)).mul(
       template.marketType === 'WIN' ? '50' : template.marketType === 'WDO' ? '2.5' : '0.15',
     );
     const entryPriceDec = toDecimal(template.basePrice).plus(priceJitter);

@@ -363,31 +363,58 @@ export class PrismaIngestionRepository implements IngestionRepository {
     resolutionsByItemId: Map<string, ConciliationAction>;
     ctx: RlsContext;
   }): Promise<CommitIngestionJobResponse> {
-    return runInRlsTransaction(async (tx) => {
-      let inserted = 0;
-      let merged = 0;
-      let overwritten = 0;
-      let ignored = 0;
+    return runInRlsTransaction(
+      async (tx) => {
+        // Lock pessimista (FOR UPDATE) na linha do job para impedir TOCTOU / duplo clique concorrente (RNF-9)
+        const lockedJobs = await tx.$queryRaw<Array<{ status: string }>>`
+          SELECT status FROM ingestion_jobs WHERE id = ${params.job.id}::uuid FOR UPDATE
+        `;
+        const lockedStatus = lockedJobs[0]?.status;
+        if (!lockedStatus) {
+          throw new IngestionServiceError(
+            404,
+            'JOB_NOT_FOUND',
+            'Importação não encontrada para a sua conta.',
+          );
+        }
+        if (lockedStatus === 'COMMITTED') {
+          throw new IngestionServiceError(
+            409,
+            'JOB_ALREADY_COMMITTED',
+            'Esta importação já foi confirmada e salva no seu Diário.',
+          );
+        }
+        if (lockedStatus !== 'AWAITING_REVIEW') {
+          throw new IngestionServiceError(
+            409,
+            'JOB_NOT_READY_FOR_COMMIT',
+            'A importação ainda está em processamento ou falhou na validação e não pode ser confirmada.',
+          );
+        }
 
-      for (const item of params.job.stagingItems) {
-        const explicitAction = params.resolutionsByItemId.get(item.id);
+        let merged = 0;
+        let overwritten = 0;
+        let ignored = 0;
+        const newTradesToInsert: Prisma.TradeCreateManyInput[] = [];
 
-        if (item.dedupStatus === 'NEW') {
-          if (explicitAction === 'IGNORE') {
-            ignored += 1;
-            await tx.stagingItem.update({
-              where: { id: item.id },
-              data: { resolutionAction: 'IGNORE' },
-            });
-            continue;
-          }
+        for (const item of params.job.stagingItems) {
+          const explicitAction = params.resolutionsByItemId.get(item.id);
 
-          const feesDec = toDecimal(item.fees);
-          const irrfDec = toDecimal(item.irrf);
-          const netPnlDec = feesDec.plus(irrfDec).negated();
+          if (item.dedupStatus === 'NEW') {
+            if (explicitAction === 'IGNORE') {
+              ignored += 1;
+              await tx.stagingItem.update({
+                where: { id: item.id },
+                data: { resolutionAction: 'IGNORE' },
+              });
+              continue;
+            }
 
-          await tx.trade.create({
-            data: {
+            const feesDec = toDecimal(item.fees);
+            const irrfDec = toDecimal(item.irrf);
+            const netPnlDec = feesDec.plus(irrfDec).negated();
+
+            newTradesToInsert.push({
               userId: params.ctx.userId,
               ticker: item.ticker,
               marketType: item.marketType,
@@ -406,160 +433,186 @@ export class PrismaIngestionRepository implements IngestionRepository {
               netPnl: new Prisma.Decimal(toNumeric4String(netPnlDec)),
               dedupHash: item.dedupHash,
               broker: item.broker,
-            },
+            });
+            continue;
+          }
+
+          // Itens EXACT_DUPLICATE ou CONFLICT
+          const action: ConciliationAction =
+            explicitAction ??
+            (item.dedupStatus === 'EXACT_DUPLICATE' ? 'IGNORE' : 'MERGE_COSTS');
+
+          if (action === 'IGNORE' || !item.matchedTradeId) {
+            ignored += 1;
+            await tx.stagingItem.update({
+              where: { id: item.id },
+              data: { resolutionAction: 'IGNORE' },
+            });
+            continue;
+          }
+
+          // Relê o trade atual DENTRO da transação para evitar sobrescrever dados stale
+          const freshTrade = await tx.trade.findUnique({
+            where: { id: item.matchedTradeId },
           });
+          if (!freshTrade) {
+            ignored += 1;
+            await tx.stagingItem.update({
+              where: { id: item.id },
+              data: { resolutionAction: 'IGNORE' },
+            });
+            continue;
+          }
 
-          inserted += 1;
-          continue;
-        }
+          const existingGross = toNumeric4String(freshTrade.grossPnl.toString());
+          const existingFees = toNumeric4String(freshTrade.fees.toString());
+          const existingIrrf = toNumeric4String(freshTrade.irrf.toString());
+          const existingNet = toNumeric4String(freshTrade.netPnl.toString());
+          const existingEntry = toNumeric4String(freshTrade.entryPrice.toString());
 
-        // Itens EXACT_DUPLICATE ou CONFLICT
-        const action: ConciliationAction =
-          explicitAction ??
-          (item.dedupStatus === 'EXACT_DUPLICATE' ? 'IGNORE' : 'MERGE_COSTS');
+          if (action === 'MERGE_COSTS') {
+            const recalculatedNet = toNumeric4String(
+              toDecimal(existingGross)
+                .minus(toDecimal(item.fees))
+                .minus(toDecimal(item.irrf)),
+            );
 
-        if (action === 'IGNORE' || !item.matchedTradeId || !item.matchedTrade) {
-          ignored += 1;
-          await tx.stagingItem.update({
-            where: { id: item.id },
-            data: { resolutionAction: 'IGNORE' },
-          });
-          continue;
-        }
-
-        const existing = item.matchedTrade;
-
-        if (action === 'MERGE_COSTS') {
-          const grossDec = toDecimal(existing.grossPnl);
-          const newFeesDec = toDecimal(item.fees);
-          const newIrrfDec = toDecimal(item.irrf);
-          const recalculatedNet = toNumeric4String(
-            grossDec.minus(newFeesDec).minus(newIrrfDec),
-          );
-
-          await tx.trade.update({
-            where: { id: existing.id },
-            data: {
-              fees: new Prisma.Decimal(item.fees),
-              irrf: new Prisma.Decimal(item.irrf),
-              netPnl: new Prisma.Decimal(recalculatedNet),
-            },
-          });
-
-          await tx.stagingItem.update({
-            where: { id: item.id },
-            data: { resolutionAction: 'MERGE_COSTS' },
-          });
-
-          await this.audit.recordAuditEvent(
-            {
-              action: 'CONCILIATION_MERGE',
-              entityType: 'TRADE',
-              entityId: existing.id,
-              userId: params.ctx.userId,
-              actorId: params.ctx.userId,
-              requestId: params.ctx.requestId,
-              ipHash: params.ctx.ipHash,
-              beforeSnapshot: {
-                resolution: 'MERGE_COSTS',
-                job_id: params.job.id,
-                fees: existing.fees,
-                irrf: existing.irrf,
-                net_pnl: existing.netPnl,
+            await tx.trade.update({
+              where: { id: freshTrade.id },
+              data: {
+                fees: new Prisma.Decimal(item.fees),
+                irrf: new Prisma.Decimal(item.irrf),
+                netPnl: new Prisma.Decimal(recalculatedNet),
               },
-              afterSnapshot: {
-                resolution: 'MERGE_COSTS',
-                job_id: params.job.id,
-                fees: item.fees,
-                irrf: item.irrf,
-                net_pnl: recalculatedNet,
+            });
+
+            await tx.stagingItem.update({
+              where: { id: item.id },
+              data: { resolutionAction: 'MERGE_COSTS' },
+            });
+
+            await this.audit.recordAuditEvent(
+              {
+                action: 'CONCILIATION_MERGE',
+                entityType: 'TRADE',
+                entityId: freshTrade.id,
+                userId: params.ctx.userId,
+                actorId: params.ctx.userId,
+                requestId: params.ctx.requestId,
+                ipHash: params.ctx.ipHash,
+                beforeSnapshot: {
+                  resolution: 'MERGE_COSTS',
+                  job_id: params.job.id,
+                  fees: existingFees,
+                  irrf: existingIrrf,
+                  net_pnl: existingNet,
+                },
+                afterSnapshot: {
+                  resolution: 'MERGE_COSTS',
+                  job_id: params.job.id,
+                  fees: item.fees,
+                  irrf: item.irrf,
+                  net_pnl: recalculatedNet,
+                },
               },
-            },
-            tx as unknown as AuditLogRepository,
-          );
+              tx as unknown as AuditLogRepository,
+            );
 
-          merged += 1;
-          continue;
-        }
+            merged += 1;
+            continue;
+          }
 
-        if (action === 'OVERWRITE') {
-          const grossDec = toDecimal(existing.grossPnl);
-          const newFeesDec = toDecimal(item.fees);
-          const newIrrfDec = toDecimal(item.irrf);
-          const recalculatedNet = toNumeric4String(
-            grossDec.minus(newFeesDec).minus(newIrrfDec),
-          );
+          if (action === 'OVERWRITE') {
+            const recalculatedNet = toNumeric4String(
+              toDecimal(existingGross)
+                .minus(toDecimal(item.fees))
+                .minus(toDecimal(item.irrf)),
+            );
 
-          await tx.trade.update({
-            where: { id: existing.id },
-            data: {
-              entryPrice: new Prisma.Decimal(item.price),
-              exitPrice: new Prisma.Decimal(item.price),
-              qty: new Prisma.Decimal(item.qty),
-              fees: new Prisma.Decimal(item.fees),
-              irrf: new Prisma.Decimal(item.irrf),
-              netPnl: new Prisma.Decimal(recalculatedNet),
-              broker: item.broker,
-              source: params.job.sourceHint,
-            },
-          });
-
-          await tx.stagingItem.update({
-            where: { id: item.id },
-            data: { resolutionAction: 'OVERWRITE' },
-          });
-
-          await this.audit.recordAuditEvent(
-            {
-              action: 'CONCILIATION_MERGE',
-              entityType: 'TRADE',
-              entityId: existing.id,
-              userId: params.ctx.userId,
-              actorId: params.ctx.userId,
-              requestId: params.ctx.requestId,
-              ipHash: params.ctx.ipHash,
-              beforeSnapshot: {
-                resolution: 'OVERWRITE',
-                job_id: params.job.id,
-                entry_price: existing.entryPrice,
-                fees: existing.fees,
-                irrf: existing.irrf,
-                net_pnl: existing.netPnl,
-                source: existing.source,
-              },
-              afterSnapshot: {
-                resolution: 'OVERWRITE',
-                job_id: params.job.id,
-                entry_price: item.price,
-                fees: item.fees,
-                irrf: item.irrf,
-                net_pnl: recalculatedNet,
+            await tx.trade.update({
+              where: { id: freshTrade.id },
+              data: {
+                entryPrice: new Prisma.Decimal(item.price),
+                exitPrice: new Prisma.Decimal(item.price),
+                qty: new Prisma.Decimal(item.qty),
+                fees: new Prisma.Decimal(item.fees),
+                irrf: new Prisma.Decimal(item.irrf),
+                netPnl: new Prisma.Decimal(recalculatedNet),
+                broker: item.broker,
                 source: params.job.sourceHint,
               },
-            },
-            tx as unknown as RlsTransactionClient as unknown as AuditLogRepository,
-          );
+            });
 
-          overwritten += 1;
+            await tx.stagingItem.update({
+              where: { id: item.id },
+              data: { resolutionAction: 'OVERWRITE' },
+            });
+
+            await this.audit.recordAuditEvent(
+              {
+                action: 'CONCILIATION_MERGE',
+                entityType: 'TRADE',
+                entityId: freshTrade.id,
+                userId: params.ctx.userId,
+                actorId: params.ctx.userId,
+                requestId: params.ctx.requestId,
+                ipHash: params.ctx.ipHash,
+                beforeSnapshot: {
+                  resolution: 'OVERWRITE',
+                  job_id: params.job.id,
+                  entry_price: existingEntry,
+                  fees: existingFees,
+                  irrf: existingIrrf,
+                  net_pnl: existingNet,
+                  source: freshTrade.source,
+                },
+                afterSnapshot: {
+                  resolution: 'OVERWRITE',
+                  job_id: params.job.id,
+                  entry_price: item.price,
+                  fees: item.fees,
+                  irrf: item.irrf,
+                  net_pnl: recalculatedNet,
+                  source: params.job.sourceHint,
+                },
+              },
+              tx as unknown as RlsTransactionClient as unknown as AuditLogRepository,
+            );
+
+            overwritten += 1;
+          }
         }
-      }
 
-      await tx.ingestionJob.update({
-        where: { id: params.job.id },
-        data: {
-          status: 'COMMITTED',
-          completedAt: new Date(),
-        },
-      });
+        // Inserção em lote idempotente para escalar até 20.000 linhas dentro do SLA (RNF-3, RNF-9)
+        let inserted = 0;
+        if (newTradesToInsert.length > 0) {
+          const batchResult = await tx.trade.createMany({
+            data: newTradesToInsert,
+            skipDuplicates: true,
+          });
+          inserted = batchResult.count;
+        }
 
-      return {
-        job_id: params.job.id,
-        inserted,
-        merged,
-        overwritten,
-        ignored,
-      };
-    });
+        await tx.ingestionJob.update({
+          where: { id: params.job.id },
+          data: {
+            status: 'COMMITTED',
+            completedAt: new Date(),
+          },
+        });
+
+        return {
+          job_id: params.job.id,
+          inserted,
+          merged,
+          overwritten,
+          ignored,
+        };
+      },
+      undefined,
+      params.ctx,
+      { maxWait: 10_000, timeout: 60_000 },
+    );
   }
 }
 

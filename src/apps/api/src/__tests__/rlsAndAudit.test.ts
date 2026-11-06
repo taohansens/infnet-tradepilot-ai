@@ -60,8 +60,8 @@ describe('AuthRlsMiddleware & RlsContext (SPEC-01, RNF-11)', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('rejeita token com subject não-UUID (fail-closed)', () => {
-    const token = jwt.sign({ sub: 'not-a-uuid' }, TEST_SECRET, {
+  it('rejeita token com subject não-UUID ou refresh_token usado como Bearer (fail-closed)', () => {
+    const token = jwt.sign({ sub: 'not-a-uuid', token_type: 'access' }, TEST_SECRET, {
       issuer: 'tradepilot-ai',
       audience: 'tradepilot-ai-web',
     });
@@ -76,11 +76,34 @@ describe('AuthRlsMiddleware & RlsContext (SPEC-01, RNF-11)', () => {
 
     expect(res.statusCode).toBe(401);
     expect(next).not.toHaveBeenCalled();
+
+    // Refresh token não pode ser usado como access token em rotas protegidas
+    const refreshToken = jwt.sign(
+      { sub: USER_A_ID, token_type: 'refresh' },
+      TEST_SECRET,
+      {
+        issuer: 'tradepilot-ai',
+        audience: 'tradepilot-ai-web',
+      },
+    );
+    const reqRefresh = {
+      headers: { authorization: `Bearer ${refreshToken}` },
+      ip: '127.0.0.1',
+    } as unknown as Request;
+    const resRefresh = createMockRes();
+    middleware(reqRefresh, resRefresh, next);
+    expect(resRefresh.statusCode).toBe(401);
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('valida JWT, popula req.auth e propaga userId via AsyncLocalStorage', () => {
     const token = jwt.sign(
-      { sub: USER_A_ID, email: 'trader@exemplo.com', plan_status: 'active' },
+      {
+        sub: USER_A_ID,
+        email: 'trader@exemplo.com',
+        plan_status: 'active',
+        token_type: 'access',
+      },
       TEST_SECRET,
       {
         issuer: 'tradepilot-ai',

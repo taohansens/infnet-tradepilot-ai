@@ -17,11 +17,14 @@ export const MoneyDecimal = Decimal.clone({
   rounding: Decimal.ROUND_HALF_UP,
 });
 
-export type MoneyInput = string | number | Decimal | bigint;
+/**
+ * Entrada monetária estritamente exata: proíbe `number` (float binário) em tempo de compilação.
+ * Use sempre string decimal ("1500.50"), instância `Decimal` ou `bigint` (centavos/inteiro).
+ */
+export type MoneyInput = string | Decimal | bigint;
 
 /**
  * Converte uma entrada monetária/preço para Decimal exato sem aritmética de float binário.
- * Strings e instâncias Decimal são preferíveis; números finitos são convertidos via string.
  *
  * @spec SPEC-10
  * @spec SPEC-14
@@ -33,12 +36,6 @@ export function toDecimal(value: MoneyInput): Decimal {
     return new MoneyDecimal(value.toString());
   }
   if (typeof value === 'bigint') {
-    return new MoneyDecimal(value.toString());
-  }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      throw new RangeError(`Valor monetário inválido (não finito): ${value}`);
-    }
     return new MoneyDecimal(value.toString());
   }
   const normalized = value.trim();

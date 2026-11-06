@@ -23,6 +23,7 @@ export interface AccessTokenClaims extends JwtPayload {
   sub: string;
   email?: string;
   plan_status?: 'trial' | 'active' | 'past_due' | 'canceled';
+  token_type?: 'access' | 'refresh';
 }
 
 export interface AuthenticatedUser {
@@ -129,12 +130,21 @@ export function createAuthRlsMiddleware(options: AuthRlsMiddlewareOptions = {}) 
       if (typeof verified === 'string' || !verified.sub) {
         res.status(401).json({
           error: 'INVALID_TOKEN_CLAIMS',
-          message: 'Token JWT inválido: identificador de usuário ausente.',
+          message: 'Sessão inválida. Faça login novamente.',
         });
         return;
       }
 
       payload = verified as AccessTokenClaims;
+
+      // Impede uso de refresh_token (longa duração) como Bearer token de acesso (SPEC-01)
+      if (payload.token_type !== 'access') {
+        res.status(401).json({
+          error: 'INVALID_TOKEN_TYPE',
+          message: 'Sessão inválida para esta operação. Faça login novamente.',
+        });
+        return;
+      }
     } catch {
       res.status(401).json({
         error: 'INVALID_OR_EXPIRED_TOKEN',

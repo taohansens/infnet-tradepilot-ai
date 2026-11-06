@@ -42,24 +42,33 @@ export async function applyRlsSessionConfig(
  * @rnf RNF-11
  * @rnf RNF-30
  */
+export interface RlsTransactionOptions {
+  maxWait?: number;
+  timeout?: number;
+}
+
 export async function runInRlsTransaction<T>(
   fn: (tx: RlsTransactionClient, ctx: RlsContext) => Promise<T>,
   client: PrismaClient = basePrisma,
   explicitContext?: RlsContext,
+  options?: RlsTransactionOptions,
 ): Promise<T> {
   const ctx = explicitContext ?? getRequiredRlsContext();
 
-  return client.$transaction(async (tx) => {
-    await applyRlsSessionConfig(tx, ctx.userId);
-    return fn(tx, ctx);
-  });
+  return client.$transaction(
+    async (tx) => {
+      await applyRlsSessionConfig(tx, ctx.userId);
+      return fn(tx, ctx);
+    },
+    options,
+  );
 }
 
 /**
  * Cria uma instância estendida do Prisma Client (`$extends`) que envolve
- * automaticamente qualquer operação de leitura/escrita em uma transação
- * PostgreSQL com `set_config('app.current_user_id', userId, true)` obtido do
- * `AsyncLocalStorage` da requisição.
+ * automaticamente qualquer operação de leitura/escrita em uma **transação interativa**
+ * na mesma conexão do pool PostgreSQL, executando `set_config('app.current_user_id', userId, true)`
+ * antes da operação no mesmo `tx` (evitando vazamento ou execução fora da transação).
  *
  * @spec SPEC-01
  * @rf RF-T-1
@@ -70,16 +79,24 @@ export function createRlsPrismaClient(client: PrismaClient = basePrisma) {
     name: 'tradepilot-rls-isolation',
     query: {
       $allModels: {
-        async $allOperations({ args, query }) {
+        async $allOperations({ model, operation, args }) {
           const ctx = getRequiredRlsContext();
+          const delegateName = model.charAt(0).toLowerCase() + model.slice(1);
 
-          // Executa set_config e a operação dentro da mesma transação no pool
-          const [, result] = await client.$transaction([
-            client.$executeRaw`SELECT set_config('app.current_user_id', ${ctx.userId}, true)`,
-            query(args),
-          ]);
-
-          return result;
+          return runInRlsTransaction(async (tx) => {
+            const delegates = tx as unknown as Record<
+              string,
+              Record<string, (operationArgs: unknown) => Promise<unknown>>
+            >;
+            const delegate = delegates[delegateName];
+            const fn = delegate?.[operation];
+            if (typeof fn !== 'function') {
+              throw new Error(
+                `Operação RLS não suportada para ${model}.${operation}.`,
+              );
+            }
+            return fn(args);
+          }, client, ctx);
         },
       },
     },

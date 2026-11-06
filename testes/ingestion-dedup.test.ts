@@ -286,7 +286,12 @@ function createTestIngestionApp() {
   );
 
   const token = jwt.sign(
-    { sub: USER_ID, email: 'rafael@exemplo.com', plan_status: 'active' },
+    {
+      sub: USER_ID,
+      email: 'rafael@exemplo.com',
+      plan_status: 'active',
+      token_type: 'access',
+    },
     TEST_JWT_SECRET,
     {
       issuer: 'tradepilot-ai',

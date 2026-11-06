@@ -295,7 +295,7 @@ export default function ConfiguracoesDadosPage() {
               Trilha de Auditoria Transacional (Append-Only)
             </h2>
             <p className="mt-1 text-sm text-slate-300">
-              Registro imutável de alterações manuais, conciliações, ajustes fiscais e eventos LGPD (`RNF-30`).
+              Registro imutável de alterações manuais, conciliações, ajustes fiscais e solicitações de privacidade (LGPD).
             </p>
           </div>
           <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-medium text-fiscal">

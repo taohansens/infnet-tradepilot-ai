@@ -76,10 +76,11 @@ export class PrismaAuthRepository implements AuthRepository {
         email: string;
         password_hash: string;
         totp_enabled: boolean;
+        totp_secret_encrypted: string | null;
         plan_status: 'trial' | 'active' | 'past_due' | 'canceled';
         onboarding_completed: boolean;
       }>
-    >`SELECT id, email, password_hash, totp_enabled, plan_status, onboarding_completed FROM auth_find_user_by_email(${email})`;
+    >`SELECT id, email, password_hash, totp_enabled, totp_secret_encrypted, plan_status, onboarding_completed FROM auth_find_user_by_email(${email})`;
 
     const row = rows[0];
     if (!row) return null;
@@ -89,6 +90,7 @@ export class PrismaAuthRepository implements AuthRepository {
       email: row.email,
       passwordHash: row.password_hash,
       totpEnabled: row.totp_enabled,
+      totpSecret: row.totp_secret_encrypted,
       planStatus: row.plan_status,
       onboardingCompleted: row.onboarding_completed,
     };
@@ -168,6 +170,7 @@ export function verifyTotpCode(
 export interface AuthServiceOptions {
   repository?: AuthRepository;
   jwtSecret?: string;
+  jwtRefreshSecret?: string;
   jwtIssuer?: string;
   jwtAudience?: string;
   accessTtlSeconds?: number;
@@ -186,6 +189,7 @@ export interface AuthServiceOptions {
 export class AuthService {
   private readonly repository: AuthRepository;
   private readonly jwtSecretOption?: string;
+  private readonly jwtRefreshSecretOption?: string;
   private readonly jwtIssuer: string;
   private readonly jwtAudience: string;
   private readonly accessTtlSeconds: number;
@@ -196,6 +200,7 @@ export class AuthService {
   constructor(options: AuthServiceOptions = {}) {
     this.repository = options.repository ?? new PrismaAuthRepository();
     this.jwtSecretOption = options.jwtSecret;
+    this.jwtRefreshSecretOption = options.jwtRefreshSecret;
     this.jwtIssuer = options.jwtIssuer ?? process.env.JWT_ISSUER ?? 'tradepilot-ai';
     this.jwtAudience =
       options.jwtAudience ?? process.env.JWT_AUDIENCE ?? 'tradepilot-ai-web';
@@ -213,14 +218,30 @@ export class AuthService {
       throw new AuthServiceError(
         500,
         'AUTH_CONFIG_ERROR',
-        'Configuração de JWT_SECRET ausente ou insegura.',
+        'Serviço de autenticação temporariamente indisponível.',
+      );
+    }
+    return secret;
+  }
+
+  private getJwtRefreshSecret(): string {
+    const secret =
+      this.jwtRefreshSecretOption ??
+      process.env.JWT_REFRESH_SECRET ??
+      this.getJwtSecret();
+    if (!secret || secret.length < 16) {
+      throw new AuthServiceError(
+        500,
+        'AUTH_CONFIG_ERROR',
+        'Serviço de autenticação temporariamente indisponível.',
       );
     }
     return secret;
   }
 
   private issueTokenPair(user: AuthUserLookup): AuthTokenResponse {
-    const secret = this.getJwtSecret();
+    const accessSecret = this.getJwtSecret();
+    const refreshSecret = this.getJwtRefreshSecret();
 
     const accessToken = jwt.sign(
       {
@@ -229,7 +250,7 @@ export class AuthService {
         plan_status: user.planStatus,
         token_type: 'access',
       },
-      secret,
+      accessSecret,
       {
         issuer: this.jwtIssuer,
         audience: this.jwtAudience,
@@ -245,7 +266,7 @@ export class AuthService {
         token_type: 'refresh',
         jti: randomUUID(),
       },
-      secret,
+      refreshSecret,
       {
         issuer: this.jwtIssuer,
         audience: this.jwtAudience,
@@ -409,7 +430,7 @@ export class AuthService {
       );
     }
 
-    const secret = this.getJwtSecret();
+    const secret = this.getJwtRefreshSecret();
     let decoded: jwt.JwtPayload;
     try {
       const verified = jwt.verify(refreshToken, secret, {

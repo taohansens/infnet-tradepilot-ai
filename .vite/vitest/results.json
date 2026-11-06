@@ -1,1 +1,1 @@
-{"version":"2.1.9","results":[[":testes/ingestion-dedup.test.ts",{"duration":89.33769999999993,"failed":false}],[":testes/lgpd-audit.test.ts",{"duration":91.37279999999998,"failed":false}],[":testes/rls-isolation.test.ts",{"duration":91.58839999999998,"failed":false}]]}
+{"version":"2.1.9","results":[[":testes/ingestion-dedup.test.ts",{"duration":93.83169999999996,"failed":false}],[":testes/lgpd-audit.test.ts",{"duration":90.428,"failed":false}],[":testes/rls-isolation.test.ts",{"duration":95.00240000000008,"failed":false}]]}

@@ -47,11 +47,15 @@ const USER_A = '11111111-1111-4111-8111-111111111111';
 const USER_B = '99999999-9999-4999-8999-999999999999';
 
 function signTokenFor(userId: string, email: string): string {
-  return jwt.sign({ sub: userId, email, plan_status: 'active' }, TEST_JWT_SECRET, {
-    issuer: 'tradepilot-ai',
-    audience: 'tradepilot-ai-web',
-    expiresIn: 900,
-  });
+  return jwt.sign(
+    { sub: userId, email, plan_status: 'active', token_type: 'access' },
+    TEST_JWT_SECRET,
+    {
+      issuer: 'tradepilot-ai',
+      audience: 'tradepilot-ai-web',
+      expiresIn: 900,
+    },
+  );
 }
 
 describe('[RNF-11] Isolamento Multi-Tenant (RLS) entre Usuário A e Usuário B', () => {

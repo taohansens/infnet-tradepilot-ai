@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
+import multer from 'multer';
 import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, type AuditAction, type AuditEntityType } from '@tradepilot/shared';
 import { authRlsMiddleware } from './middlewares/authRls.js';
 import { auditService } from './services/auditService.js';
@@ -96,21 +97,47 @@ export function createApp() {
     }
   });
 
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof RlsContextError) {
       res.status(401).json({
         error: err.code,
-        message: 'Contexto de isolamento de conta não inicializado.',
+        message: 'Sessão expirada ou não autenticada. Faça login novamente.',
       });
       return;
     }
 
-    const message =
-      err instanceof Error ? err.message : 'Erro interno inesperado no servidor.';
+    if (err instanceof multer.MulterError) {
+      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+      const message =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? 'O arquivo enviado excede o limite máximo permitido de 15 MB.'
+          : 'Não foi possível receber o arquivo enviado. Verifique o formato e tente novamente.';
+      res.status(status).json({
+        error: 'UPLOAD_ERROR',
+        message,
+      });
+      return;
+    }
+
+    if (err instanceof SyntaxError && 'body' in err) {
+      res.status(400).json({
+        error: 'INVALID_JSON_PAYLOAD',
+        message: 'Os dados enviados estão em formato inválido.',
+      });
+      return;
+    }
+
+    // Log estruturado apenas no servidor — nunca expor err.message/stack trace para a UI
+    console.error('[tradepilot-api] Erro interno não tratado', {
+      requestId: req.auth?.requestId ?? req.headers['x-request-id'] ?? null,
+      path: req.path,
+      error: err instanceof Error ? err.message : String(err),
+    });
 
     res.status(500).json({
       error: 'INTERNAL_SERVER_ERROR',
-      message,
+      message:
+        'Ocorreu um erro interno ao processar sua solicitação. Tente novamente em instantes.',
     });
   });
 
