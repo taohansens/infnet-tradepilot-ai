@@ -1,3 +1,4 @@
+export * from './types/analytics.js';
 export * from './types/audit.js';
 export * from './types/authPrivacy.js';
 export * from './types/ingestion.js';

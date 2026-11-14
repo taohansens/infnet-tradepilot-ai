@@ -29,7 +29,12 @@ import {
 import {
   IngestionParseError,
   parseIngestionFile,
+  type ReconstructedTradeMeta,
 } from './ingestionParser.js';
+import {
+  DEFAULT_B3_INSTRUMENT_CONFIGS,
+  instrumentService,
+} from './instrumentService.js';
 import {
   classifyStagingRows,
   type ClassifiedStagingRow,
@@ -85,6 +90,7 @@ export interface StoredStagingItem {
   matchedTradeId: string | null;
   diffFields: string[];
   resolutionAction: string | null;
+  rawPayload?: Record<string, unknown> | null;
   matchedTrade?: {
     id: string;
     ticker: string;
@@ -337,6 +343,10 @@ export class PrismaIngestionRepository implements IngestionRepository {
           matchedTradeId: item.matchedTradeId,
           diffFields: item.diffFields,
           resolutionAction: item.resolutionAction,
+          rawPayload:
+            item.rawPayload && typeof item.rawPayload === 'object'
+              ? (item.rawPayload as Record<string, unknown>)
+              : null,
           matchedTrade: item.matchedTrade
             ? {
                 id: item.matchedTrade.id,
@@ -410,29 +420,53 @@ export class PrismaIngestionRepository implements IngestionRepository {
               continue;
             }
 
+            const reconstructed = (item.rawPayload as { _reconstructed?: ReconstructedTradeMeta } | null)
+              ?._reconstructed;
+            const entryAt = reconstructed?.entry_at
+              ? new Date(reconstructed.entry_at)
+              : item.executedAt;
+            const exitAt = reconstructed?.exit_at
+              ? new Date(reconstructed.exit_at)
+              : item.executedAt;
+            const exitPriceStr = reconstructed?.exit_price ?? item.price;
+            const grossPnlDec = reconstructed?.gross_pnl
+              ? toDecimal(reconstructed.gross_pnl)
+              : toDecimal('0');
             const feesDec = toDecimal(item.fees);
             const irrfDec = toDecimal(item.irrf);
-            const netPnlDec = feesDec.plus(irrfDec).negated();
+            const netPnlDec = grossPnlDec.minus(feesDec).minus(irrfDec);
+
+            const entryBrtDay = new Date(entryAt.getTime() - 3 * 3600_000)
+              .toISOString()
+              .slice(0, 10);
+            const exitBrtDay = new Date(exitAt.getTime() - 3 * 3600_000)
+              .toISOString()
+              .slice(0, 10);
+            const taxSilo =
+              entryBrtDay === exitBrtDay
+                ? 'DAY_TRADE'
+                : inferDefaultTaxSilo(item.marketType);
 
             newTradesToInsert.push({
               userId: params.ctx.userId,
               ticker: item.ticker,
               marketType: item.marketType,
               side: mapOrderSideToTradeSide(item.side),
-              taxSilo: inferDefaultTaxSilo(item.marketType),
+              taxSilo,
               source: params.job.sourceHint,
               isDemo: false,
-              entryAt: item.executedAt,
-              exitAt: item.executedAt,
+              entryAt,
+              exitAt,
               qty: new Prisma.Decimal(item.qty),
               entryPrice: new Prisma.Decimal(item.price),
-              exitPrice: new Prisma.Decimal(item.price),
+              exitPrice: new Prisma.Decimal(exitPriceStr),
               fees: new Prisma.Decimal(item.fees),
               irrf: new Prisma.Decimal(item.irrf),
-              grossPnl: new Prisma.Decimal('0.0000'),
+              grossPnl: new Prisma.Decimal(toNumeric4String(grossPnlDec)),
               netPnl: new Prisma.Decimal(toNumeric4String(netPnlDec)),
               dedupHash: item.dedupHash,
               broker: item.broker,
+              setupName: reconstructed?.setup_name ?? null,
             });
             continue;
           }
@@ -738,10 +772,15 @@ export class IngestionService {
     try {
       await this.repository.markJobProcessing(params.jobId);
 
+      const instrumentConfigs = await instrumentService
+        .listUserConfigs()
+        .catch(() => DEFAULT_B3_INSTRUMENT_CONFIGS);
+
       const parsedRows = parseIngestionFile({
         fileBuffer: params.fileBuffer,
         fileName: params.fileName,
         sourceHint: params.sourceHint,
+        instrumentConfigs,
       });
 
       // Pré-calcula hashes para buscar apenas trades potencialmente conflitantes

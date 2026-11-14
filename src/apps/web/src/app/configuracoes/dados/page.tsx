@@ -14,6 +14,8 @@ import {
   requestPrivacyExport,
   type AuditLogListItem,
 } from '@/lib/apiClient';
+import AppShell from '@/components/AppShell';
+import InstrumentSettingsPanel from '@/components/InstrumentSettingsPanel';
 
 /**
  * Painel de Soberania de Dados (LGPD) e Trilha de Auditoria Imutável:
@@ -171,7 +173,8 @@ export default function ConfiguracoesDadosPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl space-y-8 px-6 py-12">
+    <AppShell subtitle="Soberania de Dados (LGPD) & Auditoria">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-profit">
@@ -227,6 +230,9 @@ export default function ConfiguracoesDadosPage() {
           </div>
         </section>
       )}
+
+      {/* Seção 0: Configurações de Contratos & Custos B3 (Taometria / SPEC-06) */}
+      {hasSession && <InstrumentSettingsPanel />}
 
       {/* Seção 1: Exportação Completa LGPD (SPEC-03 / FN-PLT-04) */}
       <section
@@ -500,6 +506,7 @@ export default function ConfiguracoesDadosPage() {
           </div>
         </div>
       )}
-    </main>
+    </div>
+    </AppShell>
   );
 }

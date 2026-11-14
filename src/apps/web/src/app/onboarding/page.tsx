@@ -23,6 +23,7 @@ import {
   seedOnboardingDemo,
   uploadIngestionFile,
 } from '@/lib/apiClient';
+import AppShell from '@/components/AppShell';
 
 /**
  * Onboarding Guiado Invertido ("Value First" + Base Demonstrativa, meta < 3 min).
@@ -248,7 +249,8 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-4xl space-y-8 px-6 py-12">
+    <AppShell subtitle="Onboarding Invertido · Value First">
+    <div className="mx-auto max-w-4xl space-y-6">
       <header className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-profit">
           Onboarding Invertido · Value First (&lt; 3 min)
@@ -603,6 +605,7 @@ export default function OnboardingPage() {
           </div>
         </section>
       )}
-    </main>
+    </div>
+    </AppShell>
   );
 }

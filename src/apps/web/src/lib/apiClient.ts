@@ -1,19 +1,25 @@
 import type {
+  AnalyticsBreakdownResponse,
+  AnalyticsSummaryResponse,
   AuthTokenResponse,
   ClearDemoSeedResponse,
   CommitIngestionJobRequest,
   CommitIngestionJobResponse,
   CompleteOnboardingResponse,
   CreateIngestionJobResponse,
+  CreateManualTradeRequest,
   DeleteAccountRequest,
   DeleteAccountResponse,
   DemoSeedResponse,
+  EquityCurveResponse,
   IngestionJobDetailResponse,
+  InstrumentConfigDto,
   LoginRequest,
   LoginRequires2faResponse,
   OnboardingStatusResponse,
   PrivacyExportJobResponse,
   RegisterRequest,
+  TradeDto,
   UploadSourceHint,
 } from '@tradepilot/shared';
 
@@ -295,6 +301,119 @@ export function fetchOnboardingStatus(): Promise<OnboardingStatusResponse> {
   return requestJson<OnboardingStatusResponse>(
     '/onboarding/status',
     { method: 'GET' },
+    true,
+  );
+}
+
+function buildQuery(params: Record<string, string | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v) qs.set(k, v);
+  }
+  const str = qs.toString();
+  return str ? `?${str}` : '';
+}
+
+export function fetchAnalyticsSummary(
+  from?: string,
+  to?: string,
+): Promise<AnalyticsSummaryResponse> {
+  return requestJson<AnalyticsSummaryResponse>(
+    `/analytics/summary${buildQuery({ from, to })}`,
+    { method: 'GET' },
+    true,
+  );
+}
+
+export function fetchEquityCurve(
+  from?: string,
+  to?: string,
+): Promise<EquityCurveResponse> {
+  return requestJson<EquityCurveResponse>(
+    `/analytics/equity-curve${buildQuery({ from, to })}`,
+    { method: 'GET' },
+    true,
+  );
+}
+
+export function fetchAnalyticsBreakdown(
+  dimension: 'hour_bucket' | 'day_of_week' | 'ticker' | 'setup_id',
+  from?: string,
+  to?: string,
+): Promise<AnalyticsBreakdownResponse> {
+  return requestJson<AnalyticsBreakdownResponse>(
+    `/analytics/breakdown${buildQuery({ dimension, from, to })}`,
+    { method: 'GET' },
+    true,
+  );
+}
+
+export function fetchTrades(
+  from?: string,
+  to?: string,
+): Promise<{ items: TradeDto[] }> {
+  return requestJson<{ items: TradeDto[] }>(
+    `/trades${buildQuery({ from, to })}`,
+    { method: 'GET' },
+    true,
+  );
+}
+
+export function createManualTrade(
+  payload: CreateManualTradeRequest,
+): Promise<TradeDto> {
+  return requestJson<TradeDto>(
+    '/trades',
+    { method: 'POST', body: JSON.stringify(payload) },
+    true,
+  );
+}
+
+export function updateTradeContext(
+  tradeId: string,
+  payload: {
+    setup_name?: string;
+    followed_plan?: boolean;
+    entry_reason?: string;
+    exit_reason?: string;
+    notes?: string;
+    pre_confidence?: number;
+    pre_anxiety?: number;
+    post_tags?: string[];
+    emotional_note?: string;
+  },
+): Promise<TradeDto> {
+  return requestJson<TradeDto>(
+    `/trades/${tradeId}/context`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+    true,
+  );
+}
+
+/**
+ * Consulta configurações de instrumentos/custos B3 do usuário (`GET /api/v1/instruments`).
+ * @spec SPEC-06
+ * @rnf RNF-11
+ */
+export function fetchInstrumentConfigs(): Promise<{ items: InstrumentConfigDto[] }> {
+  return requestJson<{ items: InstrumentConfigDto[] }>(
+    '/instruments',
+    { method: 'GET' },
+    true,
+  );
+}
+
+/**
+ * Salva configurações de instrumentos/custos B3 do usuário (`PUT /api/v1/instruments`).
+ * @spec SPEC-06
+ * @rnf RNF-20
+ */
+export function saveInstrumentConfigs(
+  items: InstrumentConfigDto[],
+): Promise<{ items: InstrumentConfigDto[] }> {
+  return requestJson<{ items: InstrumentConfigDto[] }>(
+    '/instruments',
+    { method: 'PUT', body: JSON.stringify({ items }) },
     true,
   );
 }

@@ -8,8 +8,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_ADMIN_DATABASE_URL")
 }
 
 /// @spec SPEC-01, @rf RF-T-1, @rnf RNF-11, @rnf RNF-12
@@ -27,11 +28,34 @@ model User {
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  trades        Trade[]
-  ingestionJobs IngestionJob[]
-  stagingItems  StagingItem[]
+  trades            Trade[]
+  ingestionJobs     IngestionJob[]
+  stagingItems      StagingItem[]
+  instrumentConfigs InstrumentConfig[]
 
   @@map("users")
+}
+
+/// Configurações de contratos/instrumentos por usuário (valor do ponto, tick e custos operacionais).
+/// @spec SPEC-06, @spec SPEC-10, @rnf RNF-11, @rnf RNF-20
+model InstrumentConfig {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  assetType       String   @default("futuros") @map("asset_type")
+  contractPrefix  String   @map("contract_prefix")
+  tickSize        Decimal  @default(0) @map("tick_size") @db.Decimal(18, 4)
+  pointValue      Decimal  @default(1) @map("point_value") @db.Decimal(18, 4)
+  costPerContract Decimal  @default(0) @map("cost_per_contract") @db.Decimal(18, 4)
+  costPerOrder    Decimal  @default(0) @map("cost_per_order") @db.Decimal(18, 4)
+  issPercent      Decimal  @default(0) @map("iss_percent") @db.Decimal(18, 4)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contractPrefix], map: "uq_instrument_configs_user_prefix")
+  @@map("instrument_configs")
 }
 
 /// Tabela estritamente append-only (sem UPDATE/DELETE para tradepilot_app).

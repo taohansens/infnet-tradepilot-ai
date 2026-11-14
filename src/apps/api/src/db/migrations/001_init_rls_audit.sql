@@ -88,6 +88,7 @@ CREATE POLICY users_self_isolation ON users
 
 -- Função controlada (SECURITY DEFINER) exclusivamente para autenticação inicial
 -- antes que app.current_user_id exista na sessão (@spec SPEC-01).
+DROP FUNCTION IF EXISTS auth_find_user_by_email(TEXT);
 CREATE OR REPLACE FUNCTION auth_find_user_by_email(p_email TEXT)
 RETURNS TABLE (
   id                    UUID,

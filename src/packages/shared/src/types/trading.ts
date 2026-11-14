@@ -53,3 +53,25 @@ export type DedupStatus = (typeof DEDUP_STATUSES)[number];
 
 export const CONCILIATION_ACTIONS = ['IGNORE', 'OVERWRITE', 'MERGE_COSTS'] as const;
 export type ConciliationAction = (typeof CONCILIATION_ACTIONS)[number];
+
+/**
+ * Configuração de contrato/instrumento B3 por usuário (valor do ponto, tick,
+ * custo por contrato, custo por ordem e ISS) — inspirado no Taometria.
+ * Todos os campos numéricos trafegam como string decimal exata (`NUMERIC(18,4)`).
+ *
+ * @spec SPEC-06
+ * @spec SPEC-10
+ * @rnf RNF-11
+ * @rnf RNF-20
+ */
+export interface InstrumentConfigDto {
+  id?: string;
+  asset_type: 'futuros' | 'acoes' | 'opcoes';
+  contract_prefix: string;
+  tick_size: string;
+  point_value: string;
+  cost_per_contract: string;
+  cost_per_order: string;
+  iss_percent: string;
+  is_active: boolean;
+}

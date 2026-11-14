@@ -74,6 +74,72 @@ describe('IngestionParser (SPEC-06 — B3 CSV, Profit CSV e XLSX)', () => {
     });
   });
 
+  it('reconstrói trades fechados via FIFO no CSV real do Profit (2311.csv) com entradas parciais (1+1=2), valor do ponto WIN=0,20 e custos/ISS', () => {
+    const profitCsv = [
+      'f5b250696ad0c13e47afa52cbcea89b9,23/11/2026,23/11/2026',
+      'Corretora;Conta;Titular;ClOrdID;Ativo;Lado;Status;Criação;Última Atualização;Preço;Preço Stop;Qtd;Preço Médio;Qtd Executada;Qtd restante;Total;Total Executado;Validade;Data Validade;Estratégia;Mensagem;Carteira;Tipo de Ordem;TaskID;Bolsa;Origem',
+      // Trade 1 (parcial): vendeu 1 + vendeu 1 a 166.850,00 e zerou comprando 2 a 167.120,00 -> -270 pts * 2 * 0,20 = -R$ 108,00
+      'BTG - DayTrade;12901161;Tao;ID-1;WINZ26;V;Executada;23/11/2026 11:17:21.305;23/11/2026 11:17:21.329;166.850,00;-;1;166.850,00;1;-;33.370,00;33.370,00;Hoje;-;Normal;;-;Limite;-;BMF;Corretora',
+      'BTG - DayTrade;12901161;Tao;ID-2;WINZ26;V;Executada;23/11/2026 11:17:30.546;23/11/2026 11:17:32.787;166.850,00;-;1;166.850,00;1;-;33.370,00;33.370,00;Hoje;-;Normal;;-;Limite;-;BMF;Corretora',
+      'BTG - DayTrade;12901161;Tao;ID-3;WINZ26;C;Executada;23/11/2026 11:17:57.751;23/11/2026 11:22:19.169;167.270,00;-;2;167.120,00;2;-;66.908,00;66.848,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia',
+      // Ordem Cancelada deve ser ignorada
+      'BTG - DayTrade;12901161;Tao;ID-CANC;WINZ26;V;Cancelada;23/11/2026 11:23:00.000;23/11/2026 11:23:01.000;167.000,00;-;3;-;0;3;0,00;0,00;Hoje;-;Normal;;-;Limite;-;BMF;Corretora',
+      // Trade 2: vendeu 3 a 166.355,00 e comprou 3 a 166.285,00 -> +70 pts * 3 * 0,20 = +R$ 42,00
+      'BTG - DayTrade;12901161;Tao;ID-4;WINZ26;V;Executada;23/11/2026 17:22:26.383;23/11/2026 17:22:40.271;166.355,00;-;3;166.355,00;3;-;99.813,00;99.813,00;Hoje;-;Normal;;-;Limite;-;BMF;Corretora',
+      'BTG - DayTrade;12901161;Tao;ID-5;WINZ26;C;Executada;23/11/2026 17:22:58.998;23/11/2026 17:49:58.679;166.435,00;-;3;166.285,00;3;-;99.861,00;99.771,00;Hoje;-;Normal;;-;Limite;-;BMF;Estratégia',
+    ].join('\n');
+
+    const rows = parseIngestionFile({
+      fileBuffer: Buffer.from(profitCsv, 'utf8'),
+      fileName: '2311.csv',
+      sourceHint: 'PROFIT_CSV',
+      instrumentConfigs: [
+        {
+          asset_type: 'futuros',
+          contract_prefix: 'WIN',
+          tick_size: '5.0000',
+          point_value: '0.2000',
+          cost_per_contract: '0.5000',
+          cost_per_order: '0.0000',
+          iss_percent: '5.0000',
+          is_active: true,
+        },
+      ],
+    });
+
+    expect(rows).toHaveLength(2);
+
+    // Trade 1: 2 contratos SHORT, entrada 166850, saída 167120 -> -R$ 108,00 bruto; taxa = (2*0,50) * 1,05 = R$ 1,05
+    expect(rows[0]).toMatchObject({
+      ticker: 'WINZ26',
+      side: 'SELL',
+      qty: '2.0000',
+      price: '166850.0000',
+      fees: '1.0500',
+    });
+    expect(
+      (rows[0]!.rawPayload._reconstructed as { gross_pnl: string; exit_price: string }),
+    ).toMatchObject({
+      gross_pnl: '-108.0000',
+      exit_price: '167120.0000',
+    });
+
+    // Trade 2: 3 contratos SHORT, entrada 166355, saída 166285 -> +R$ 42,00 bruto; taxa = (3*0,50) * 1,05 = R$ 1,5750
+    expect(rows[1]).toMatchObject({
+      ticker: 'WINZ26',
+      side: 'SELL',
+      qty: '3.0000',
+      price: '166355.0000',
+      fees: '1.5750',
+    });
+    expect(
+      (rows[1]!.rawPayload._reconstructed as { gross_pnl: string; exit_price: string }),
+    ).toMatchObject({
+      gross_pnl: '42.0000',
+      exit_price: '166285.0000',
+    });
+  });
+
   it('faz parsing de planilha XLSX real do Profit sem float binário', () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([

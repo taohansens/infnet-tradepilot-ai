@@ -5,10 +5,13 @@ import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, type AuditAction, type AuditEntityTy
 import { authRlsMiddleware } from './middlewares/authRls.js';
 import { auditService } from './services/auditService.js';
 import { RlsContextError } from './db/rlsContext.js';
+import { createAnalyticsRouter } from './routes/analyticsRoutes.js';
 import { createAuthRouter } from './routes/authRoutes.js';
 import { createIngestionRouter } from './routes/ingestionRoutes.js';
+import { createInstrumentRouter } from './routes/instrumentRoutes.js';
 import { createOnboardingRouter } from './routes/onboardingRoutes.js';
 import { createPrivacyRouter } from './routes/privacyRoutes.js';
+import { createTradesRouter } from './routes/tradesRoutes.js';
 
 /**
  * Aplicação Express do backend TradePilot AI com rotas de Autenticação (SPEC-01),
@@ -55,6 +58,15 @@ export function createApp() {
 
   // Rotas autenticadas de onboarding invertido e base demonstrativa (SPEC-05)
   app.use('/api/v1/onboarding', authRlsMiddleware, createOnboardingRouter());
+
+  // Rotas autenticadas do Diário de Trade (SPEC-10, SPEC-12, SPEC-13)
+  app.use('/api/v1/trades', authRlsMiddleware, createTradesRouter());
+
+  // Rotas autenticadas de Analytics determinístico e Raio-X (SPEC-14 a SPEC-17, SPEC-20)
+  app.use('/api/v1/analytics', authRlsMiddleware, createAnalyticsRouter());
+
+  // Rotas autenticadas de configuração de instrumentos e custos B3 (Taometria / SPEC-06)
+  app.use('/api/v1/instruments', authRlsMiddleware, createInstrumentRouter());
 
   /**
    * Consulta somente-leitura da trilha de auditoria imutável do usuário autenticado.

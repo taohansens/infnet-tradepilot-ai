@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { FiMoon, FiSun } from 'react-icons/fi';
+import { useAppTheme } from '@/components/ThemeProvider';
 import {
   ApiClientError,
   loginAccount,
@@ -10,7 +12,8 @@ import {
 } from '@/lib/apiClient';
 
 /**
- * Tela de Login com suporte a autenticação JWT + 2FA TOTP opcional.
+ * Tela de Login no estilo split hero do Taometria (`.auth-shell`),
+ * com suporte a JWT + 2FA TOTP opcional e alternância Tema Dracula / Claro.
  *
  * @spec SPEC-01
  * @rf RF-T-1
@@ -22,6 +25,9 @@ import {
  */
 export default function LoginPage() {
   const router = useRouter();
+  const { theme, toggleTheme } = useAppTheme();
+  const isDark = theme === 'dracula';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [totpCode, setTotpCode] = useState('');
@@ -50,7 +56,7 @@ export default function LoginPage() {
       }
 
       saveAuthTokens(result);
-      router.push('/configuracoes/dados');
+      router.push(result.requires_onboarding ? '/onboarding' : '/dashboard');
     } catch (error) {
       if (error instanceof ApiClientError) {
         setErrorMessage(error.message);
@@ -63,131 +69,151 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
-      <div className="rounded-2xl border border-slate-800 bg-surface-900 p-8 shadow-xl">
-        <header className="mb-6 space-y-2">
-          <Link
-            href="/"
-            className="text-xs font-semibold uppercase tracking-wider text-profit hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-          >
-            TradePilot AI
-          </Link>
-          <h1 className="text-2xl font-semibold text-white">Entrar na sua conta</h1>
-          <p className="text-sm text-slate-300">
-            Acesso protegido com JWT e isolamento individual de dados (RLS).
+    <main className="auth-shell min-h-screen px-6 py-10">
+      <div className="mx-auto mb-8 flex w-full max-w-5xl items-center justify-between">
+        <Link href="/" className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#bd93f9] text-sm font-black text-[#282a36]">
+            TP
+          </span>
+          <span className="text-sm font-extrabold tracking-tight">TradePilot AI</span>
+        </Link>
+
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className="ui-button-secondary rounded-full px-4 py-2 text-xs"
+        >
+          {isDark ? <FiSun className="h-4 w-4" /> : <FiMoon className="h-4 w-4" />}
+          {isDark ? 'Tema Claro' : 'Tema Dracula'}
+        </button>
+      </div>
+
+      <div className="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+        <section className="desk-panel space-y-5 p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-profit">
+            Plataforma Operacional &amp; Fiscal B3
           </p>
-        </header>
-
-        {errorMessage && (
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
-          >
-            {errorMessage}
+          <h1 className="text-4xl font-black leading-tight tracking-tight">
+            Controle seus trades com clareza, precisão e disciplina.
+          </h1>
+          <p className="max-w-xl text-sm text-[var(--app-muted)]">
+            Importe extratos da B3 e ordens do Profit com deduplicação automática, acompanhe sua curva de capital com Raio-X da Fórmula e mantenha seus dados protegidos por isolamento individual e LGPD.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              ['Importação', 'B3 + Profit + Conciliação'],
+              ['Analytics', 'KPIs, Curva e Raio-X (?)'],
+              ['Risco & LGPD', 'Ctrl+K, RLS e Auditoria'],
+            ].map(([title, desc]) => (
+              <div key={title} className="ui-panel-soft px-4 py-3">
+                <p className="text-sm font-bold">{title}</p>
+                <p className="mt-1 text-xs text-[var(--app-muted)]">{desc}</p>
+              </div>
+            ))}
           </div>
-        )}
+        </section>
 
-        {infoMessage && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
-          >
-            {infoMessage}
-          </div>
-        )}
+        <section className="ui-panel p-8">
+          <header className="mb-6 space-y-1">
+            <h2 className="text-2xl font-bold">Entrar na sua conta</h2>
+            <p className="text-sm text-[var(--app-muted)]">
+              Sessão protegida com JWT e isolamento individual de dados.
+            </p>
+          </header>
 
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <div>
-            <label
-              htmlFor="login-email"
-              className="mb-1.5 block text-sm font-medium text-slate-200"
+          {errorMessage && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="mb-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200"
             >
-              E-mail
-            </label>
-            <input
-              id="login-email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="voce@exemplo.com.br"
-              className="w-full rounded-lg border border-slate-700 bg-surface-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus-visible:border-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="login-password"
-              className="mb-1.5 block text-sm font-medium text-slate-200"
-            >
-              Senha
-            </label>
-            <input
-              id="login-password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              minLength={10}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Sua senha de acesso"
-              className="w-full rounded-lg border border-slate-700 bg-surface-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus-visible:border-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            />
-          </div>
-
-          {requires2fa && (
-            <div>
-              <label
-                htmlFor="login-totp"
-                className="mb-1.5 block text-sm font-medium text-amber-300"
-              >
-                Código 2FA (TOTP — 6 dígitos)
-              </label>
-              <input
-                id="login-totp"
-                name="totp_code"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                required
-                value={totpCode}
-                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="000000"
-                aria-describedby="totp-help"
-                className="w-full rounded-lg border border-amber-500/60 bg-surface-950 px-3.5 py-2.5 text-sm tracking-widest text-white placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-              />
-              <p id="totp-help" className="mt-1 text-xs text-slate-400">
-                Digite o código de 6 dígitos exibido no seu aplicativo autenticador.
-              </p>
+              {errorMessage}
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-900 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? 'Autenticando...' : requires2fa ? 'Validar código 2FA' : 'Entrar'}
-          </button>
-        </form>
-
-        <footer className="mt-6 flex flex-col gap-2 border-t border-slate-800 pt-5 text-center text-sm text-slate-300">
-          <p>
-            Ainda não tem conta?{' '}
-            <Link
-              href="/cadastro"
-              className="font-medium text-profit underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          {infoMessage && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
             >
+              {infoMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+            <div>
+              <label htmlFor="login-email" className="mb-1.5 block text-xs font-semibold text-[var(--app-muted)]">
+                E-mail
+              </label>
+              <input
+                id="login-email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="voce@exemplo.com.br"
+                className="ui-input"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold text-[var(--app-muted)]">
+                Senha
+              </label>
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                minLength={10}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Sua senha de acesso"
+                className="ui-input"
+              />
+            </div>
+
+            {requires2fa && (
+              <div>
+                <label htmlFor="login-totp" className="mb-1.5 block text-xs font-semibold text-fiscal">
+                  Código 2FA (TOTP — 6 dígitos)
+                </label>
+                <input
+                  id="login-totp"
+                  name="totp_code"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  className="ui-input tracking-widest"
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="ui-button-primary w-full disabled:opacity-60"
+            >
+              {submitting ? 'Autenticando...' : requires2fa ? 'Validar código 2FA' : 'Entrar'}
+            </button>
+          </form>
+
+          <footer className="mt-6 border-t border-[var(--app-line)] pt-5 text-center text-sm text-[var(--app-muted)]">
+            Ainda não tem conta?{' '}
+            <Link href="/cadastro" className="font-semibold text-profit hover:underline">
               Criar conta gratuita
             </Link>
-          </p>
-        </footer>
+          </footer>
+        </section>
       </div>
     </main>
   );

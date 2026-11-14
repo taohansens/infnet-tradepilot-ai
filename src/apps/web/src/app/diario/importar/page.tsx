@@ -24,6 +24,7 @@ import {
   getAccessToken,
   uploadIngestionFile,
 } from '@/lib/apiClient';
+import AppShell from '@/components/AppShell';
 
 /**
  * Wizard de Importação Assíncrona e Conciliação Assistida (`/diario/importar`).
@@ -266,7 +267,8 @@ export default function DiarioImportarPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl space-y-8 px-6 py-12">
+    <AppShell subtitle="Importação Assíncrona & Conciliação">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-profit">
@@ -758,7 +760,8 @@ export default function DiarioImportarPage() {
           </div>
         </section>
       )}
-    </main>
+    </div>
+    </AppShell>
   );
 }
 

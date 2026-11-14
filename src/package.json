@@ -14,7 +14,9 @@
     "test": "npm run test --workspace=@tradepilot/shared && npm run test --workspace=@tradepilot/api",
     "test:gherkin": "vitest run --config vitest.gherkin.config.ts",
     "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "db:migrate": "npm run prisma:migrate --workspace=@tradepilot/api",
+    "db:migrate:rls": "docker exec -i tradepilot-postgres psql -U tradepilot_admin -d tradepilot_db < apps/api/src/db/migrations/001_init_rls_audit.sql"
   },
   "engines": {
     "node": ">=20.0.0"

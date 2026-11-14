@@ -1,11 +1,178 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
+/**
+ * Design System TradePilot AI inspirado no Taometria:
+ * Tema Dracula (modo escuro padrão, RNF-23) com alternância para Tema Claro,
+ * mantendo identidade semântica (Verde lucro, Vermelho prejuízo, Âmbar fiscal)
+ * e contraste WCAG 2.1 AA (RNF-24).
+ *
+ * @spec SPEC-18
+ * @rnf RNF-23
+ * @rnf RNF-24
+ */
+
+@layer base {
+  :root {
+    --app-bg: #f8fafc;
+    --app-bg-2: #eef2ff;
+    --app-text: #0f172a;
+    --app-muted: #475569;
+    --app-muted-2: #64748b;
+    --app-surface: rgba(255, 255, 255, 0.88);
+    --app-surface-strong: rgba(255, 255, 255, 0.96);
+    --app-surface-soft: rgba(248, 250, 252, 0.92);
+    --app-line: rgba(226, 232, 240, 0.95);
+    --app-shadow: rgba(15, 23, 42, 0.08);
+    --app-accent: #8b5cf6;
+    --app-accent-2: #06b6d4;
+    --app-success: #10b981;
+    --app-warning: #d97706;
+    --app-danger: #dc2626;
+    --chart-bg: #ffffff;
+    --chart-text: #0f172a;
+    --chart-grid: #e2e8f0;
+  }
+
+  html[data-theme='dracula'] {
+    color-scheme: dark;
+    --app-bg: #282a36;
+    --app-bg-2: #21222c;
+    --app-text: #f8f8f2;
+    --app-muted: #bdc3e6;
+    --app-muted-2: #7c8bb8;
+    --app-surface: rgba(40, 42, 54, 0.92);
+    --app-surface-strong: rgba(40, 42, 54, 0.98);
+    --app-surface-soft: rgba(68, 71, 90, 0.58);
+    --app-line: rgba(98, 114, 164, 0.34);
+    --app-shadow: rgba(0, 0, 0, 0.34);
+    --app-accent: #bd93f9;
+    --app-accent-2: #8be9fd;
+    --app-success: #50fa7b;
+    --app-warning: #f59e0b;
+    --app-danger: #ff5555;
+    --chart-bg: #282a36;
+    --chart-text: #f8f8f2;
+    --chart-grid: #44475a;
+  }
+
+  body {
+    @apply m-0 antialiased;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    color: var(--app-text);
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--app-surface-strong) 80%, transparent) 0%, transparent 34%),
+      radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--app-accent-2) 18%, transparent) 0%, transparent 28%),
+      linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-2) 100%);
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--app-accent) 28%, transparent);
+    color: var(--app-text);
+  }
 }
 
-body {
-  @apply bg-surface-950 text-slate-100 antialiased;
+@layer components {
+  .app-shell {
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--app-surface-strong) 84%, transparent) 0%, transparent 34%),
+      radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--app-accent-2) 16%, transparent) 0%, transparent 28%),
+      linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-2) 100%);
+  }
+
+  .auth-shell {
+    background:
+      radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--app-warning) 18%, transparent) 0%, transparent 36%),
+      radial-gradient(circle at 82% 80%, color-mix(in srgb, var(--app-accent) 20%, transparent) 0%, transparent 38%),
+      linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-2) 100%);
+  }
+
+  .desk-panel {
+    @apply rounded-[28px] border backdrop-blur-xl;
+    background: var(--app-surface);
+    border-color: var(--app-line);
+    box-shadow: 0 18px 50px var(--app-shadow);
+  }
+
+  .ui-panel {
+    @apply overflow-hidden rounded-3xl border;
+    background: var(--app-surface-strong);
+    border-color: var(--app-line);
+    box-shadow: 0 14px 34px var(--app-shadow);
+  }
+
+  .ui-panel-soft {
+    @apply rounded-2xl border;
+    background: color-mix(in srgb, var(--app-surface-soft) 88%, transparent);
+    border-color: var(--app-line);
+  }
+
+  .ui-hero-band {
+    border-bottom: 1px solid color-mix(in srgb, var(--app-line) 92%, transparent);
+    background:
+      linear-gradient(
+        120deg,
+        color-mix(in srgb, var(--app-surface-strong) 92%, transparent) 0%,
+        color-mix(in srgb, var(--app-surface-soft) 84%, transparent) 54%,
+        color-mix(in srgb, var(--app-accent-2) 10%, var(--app-surface-strong)) 100%
+      );
+  }
+
+  .ui-stat-tile {
+    @apply rounded-2xl border px-4 py-3.5;
+    background: color-mix(in srgb, var(--app-surface-soft) 86%, transparent);
+    border-color: var(--app-line);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--app-shadow) 55%, transparent);
+  }
+
+  .ui-chip {
+    @apply inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold;
+    background: color-mix(in srgb, var(--app-surface-soft) 84%, transparent);
+    border-color: var(--app-line);
+    color: var(--app-muted);
+  }
+
+  .ui-input {
+    @apply w-full rounded-2xl border px-3.5 py-2.5 text-sm outline-none transition;
+    background: var(--app-surface-strong);
+    border-color: var(--app-line);
+    color: var(--app-text);
+  }
+
+  .ui-input:focus {
+    border-color: color-mix(in srgb, var(--app-accent) 55%, var(--app-line));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 18%, transparent);
+  }
+
+  .ui-button-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--app-accent) 84%, black) 0%, var(--app-accent) 100%);
+    box-shadow: 0 12px 24px color-mix(in srgb, var(--app-accent) 26%, transparent);
+  }
+
+  .ui-button-primary:hover {
+    filter: brightness(1.06);
+  }
+
+  .ui-button-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-semibold transition;
+    background: var(--app-surface-strong);
+    border-color: var(--app-line);
+    color: var(--app-text);
+  }
+
+  .ui-button-secondary:hover {
+    background: color-mix(in srgb, var(--app-surface-soft) 92%, transparent);
+    border-color: color-mix(in srgb, var(--app-accent) 45%, var(--app-line));
+  }
+
+  .ui-button-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition;
+    background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%);
+    box-shadow: 0 12px 24px rgba(239, 68, 68, 0.24);
+  }
 }

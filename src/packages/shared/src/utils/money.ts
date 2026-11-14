@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import { Decimal } from 'decimal.js';
+import { sha256Hex } from './sha256.js';
 
 /**
  * Configuração global determinística para cálculos financeiros e fiscais.
@@ -113,7 +113,7 @@ export function computeTradeDedupHash(params: {
     priceCents,
   ].join('|');
 
-  return createHash('sha256').update(payload, 'utf8').digest('hex');
+  return sha256Hex(payload);
 }
 
 /**

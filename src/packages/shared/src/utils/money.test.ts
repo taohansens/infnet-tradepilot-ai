@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   centsToDecimal,
@@ -7,6 +8,7 @@ import {
   toDecimal,
   toNumeric4String,
 } from './money.js';
+import { sha256Hex } from './sha256.js';
 
 /**
  * Testes unitários de precisão monetária determinística (sem ponto flutuante binário)
@@ -53,5 +55,11 @@ describe('Utilitários monetários determinísticos (Decimal / Centavos)', () =>
 
     expect(h1).toHaveLength(64);
     expect(h1).toBe(h2);
+
+    // Garante paridade bit-a-bit da implementação isomórfica SHA-256 com node:crypto
+    const sample = 'tradepilot-ai|WDOX26|2026-10-09T13:05Z|BUY|2.0000|545050';
+    expect(sha256Hex(sample)).toBe(
+      createHash('sha256').update(sample, 'utf8').digest('hex'),
+    );
   });
 });
