@@ -1,0 +1,195 @@
+name: TradePilot AI — CI/CD (Cloudflare Pages + Coolify)
+
+# Pipeline de Entrega Contínua (@rnf RNF-11, RNF-19, RNF-21, RNF-30)
+# - Pull Requests para `main`: executa CI completo (build, migrations RLS, typecheck, testes e build web)
+# - Push em `main` ou disparo manual: executa CI e publica Web (Cloudflare Pages) + API (Coolify)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ==========================================================================
+  # ETAPA 1: Integração Contínua — Build, Migrations RLS, Typecheck e Testes
+  # ==========================================================================
+  ci-quality-and-tests:
+    name: CI · Build, Migrations RLS, Typecheck & Testes
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tradepilot_admin
+          POSTGRES_PASSWORD: tradepilot_admin_ci_password
+          POSTGRES_DB: tradepilot_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U tradepilot_admin -d tradepilot_db"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgresql://tradepilot_app:tradepilot_app_dev_password@localhost:5432/tradepilot_db?schema=public
+      DIRECT_ADMIN_DATABASE_URL: postgresql://tradepilot_admin:tradepilot_admin_ci_password@localhost:5432/tradepilot_db?schema=public
+      JWT_SECRET: ci-test-jwt-secret-with-at-least-32-characters
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-with-at-least-32-characters
+      NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'https://api.tradepilot.local/api/v1' }}
+
+    steps:
+      - name: 1. Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Node.js 20 com cache npm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      - name: 3. Instalar dependências do monorepo (determinístico)
+        working-directory: src
+        run: npm ci
+
+      - name: 4. Validar schema e gerar Prisma Client
+        working-directory: src
+        run: |
+          npm exec --workspace=@tradepilot/api -- prisma validate --schema=prisma/schema.prisma
+          npm run prisma:generate --workspace=@tradepilot/api
+
+      - name: 5. Validar migrations SQL (RLS + Append-Only) no PostgreSQL 16
+        working-directory: src
+        run: |
+          npm run db:migrate
+          PGPASSWORD=tradepilot_admin_ci_password psql -h localhost -U tradepilot_admin -d tradepilot_db -v ON_ERROR_STOP=1 -c "
+            DO \$\$
+            DECLARE
+              rls_count INTEGER;
+              trig_count INTEGER;
+            BEGIN
+              SELECT count(*) INTO rls_count
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public'
+                AND c.relname IN ('users','audit_logs','trades','ingestion_jobs','staging_items','instrument_configs')
+                AND c.relrowsecurity = true
+                AND c.relforcerowsecurity = true;
+
+              IF rls_count <> 6 THEN
+                RAISE EXCEPTION 'Falha RNF-11: esperado FORCE RLS em 6 tabelas, encontrado %', rls_count;
+              END IF;
+
+              SELECT count(*) INTO trig_count
+              FROM pg_trigger
+              WHERE tgname = 'trg_audit_logs_immutable';
+
+              IF trig_count < 1 THEN
+                RAISE EXCEPTION 'Falha RNF-30: trigger trg_audit_logs_immutable ausente em audit_logs';
+              END IF;
+            END
+            \$\$;
+          "
+
+      - name: 6. Build do pacote compartilhado e da API
+        working-directory: src
+        run: |
+          npm run build --workspace=@tradepilot/shared
+          npm run build --workspace=@tradepilot/api
+
+      - name: 7. Verificação estática de tipos (TypeScript strict)
+        working-directory: src
+        run: npm run typecheck
+
+      - name: 8. Executar testes unitários (Shared + API + Golden Tests)
+        working-directory: src
+        run: npm run test
+
+      - name: 9. Executar suíte de aceitação Gherkin + Supertest (testes/)
+        working-directory: src
+        run: npm run test:gherkin
+
+      - name: 10. Build de produção Next.js (Static Export para Cloudflare Pages)
+        working-directory: src
+        run: npm run build --workspace=@tradepilot/web
+
+      - name: 11. Publicar artefato estático do frontend (out/)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-static-export
+          path: src/apps/web/out
+          retention-days: 5
+
+  # ==========================================================================
+  # ETAPA 2A: Deploy Contínuo do Frontend -> Cloudflare Pages
+  # ==========================================================================
+  deploy-web-cloudflare:
+    name: CD · Deploy Frontend (Cloudflare Pages)
+    needs: ci-quality-and-tests
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: 1. Baixar artefato estático validado (out/)
+        uses: actions/download-artifact@v4
+        with:
+          name: web-static-export
+          path: web-out
+
+      - name: 2. Publicar no Cloudflare Pages via Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web-out --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT || 'tradepilot-ai' }} --branch=main
+
+  # ==========================================================================
+  # ETAPA 2B: Deploy Contínuo do Backend -> Coolify + Smoke Test
+  # ==========================================================================
+  deploy-api-coolify:
+    name: CD · Deploy Backend (Coolify) & Smoke Test
+    needs: ci-quality-and-tests
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: 1. Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: 2. Validar build da imagem Docker da API
+        run: docker build -f src/apps/api/Dockerfile -t tradepilot-api:ci src
+
+      - name: 3. Acionar Deploy Webhook no Coolify
+        run: |
+          if [ -z "${{ secrets.COOLIFY_DEPLOY_WEBHOOK_URL }}" ]; then
+            echo "Erro: secret COOLIFY_DEPLOY_WEBHOOK_URL não configurada."
+            exit 1
+          fi
+          curl -fsSL -X GET "${{ secrets.COOLIFY_DEPLOY_WEBHOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}"
+
+      - name: 4. Smoke Test Pós-Deploy em /health
+        if: vars.PRODUCTION_API_URL != ''
+        run: |
+          echo "Aguardando estabilização do container no Coolify..."
+          sleep 20
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS "${{ vars.PRODUCTION_API_URL }}/health" | grep -q '"status":"ok"'; then
+              echo "Smoke test aprovado na tentativa ${attempt}!"
+              exit 0
+            fi
+            echo "Tentativa ${attempt} ainda indisponível; aguardando 10s..."
+            sleep 10
+          done
+          echo "Falha: endpoint /health não respondeu OK após o deploy."
+          exit 1
