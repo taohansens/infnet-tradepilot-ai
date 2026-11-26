@@ -175,7 +175,7 @@ jobs:
             echo "Erro: secret COOLIFY_DEPLOY_WEBHOOK_URL não configurada."
             exit 1
           fi
-          curl -fsSL -X GET "${{ secrets.COOLIFY_DEPLOY_WEBHOOK_URL }}" \
+          curl -fsSL -X POST "${{ secrets.COOLIFY_DEPLOY_WEBHOOK_URL }}" \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}"
 
       - name: 4. Smoke Test Pós-Deploy em /health
